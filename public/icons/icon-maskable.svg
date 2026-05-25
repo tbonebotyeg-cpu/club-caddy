@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full bleed for maskable: safe area is the central 80% -->
+  <rect width="512" height="512" fill="#b6ff00"/>
+  <text x="256" y="320" text-anchor="middle"
+        font-family="-apple-system, system-ui, sans-serif"
+        font-weight="800" font-size="200" fill="#0a0a0a"
+        letter-spacing="-10">CC</text>
+</svg>

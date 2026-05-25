@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* === Club Caddy theme: Athletic dark + electric lime ===================== */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --background: #0a0a0a;
+  --surface: #141414;
+  --surface-elevated: #1c1c1c;
+  --border: #262626;
+  --border-strong: #2f2f2f;
+
+  /* Text */
+  --foreground: #fafafa;
+  --muted: #a1a1aa;
+  --subtle: #71717a;
+
+  /* Accents */
+  --accent: #b6ff00;
+  --accent-hover: #c9ff33;
+  --accent-foreground: #0a0a0a;
+
+  /* Status */
+  --success: #b6ff00;
+  --warning: #f5a524;
+  --danger: #ff3d3d;
+
+  /* Score colors */
+  --score-eagle: #ffd700;
+  --score-birdie: #b6ff00;
+  --score-par: #a1a1aa;
+  --score-bogey: #f5a524;
+  --score-double: #ff3d3d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-score-eagle: var(--score-eagle);
+  --color-score-birdie: var(--score-birdie);
+  --color-score-par: var(--score-par);
+  --color-score-bogey: var(--score-bogey);
+  --color-score-double: var(--score-double);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-card: 16px;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+  /* Subtle grain overlay — global texture */
+  background-image:
+    radial-gradient(1200px 600px at 50% -10%, rgba(182, 255, 0, 0.05), transparent 60%),
+    var(--background);
+}
+
+/* Selection */
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Scrollbar (subtle, dark) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Focus ring */
+:where(button, [role="button"], input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Hide chrome on inputs that look ugly with the dark theme */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Grain overlay utility */
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* Numeric "instrument readout" text */
+.num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Card hover lift */
+.card-hover {
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 8px 24px -12px rgba(182, 255, 0, 0.25);
+}
+
+/* Score color helpers */
+.score-eagle { color: var(--score-eagle); }
+.score-birdie { color: var(--score-birdie); }
+.score-par { color: var(--score-par); }
+.score-bogey { color: var(--score-bogey); }
+.score-double { color: var(--score-double); }
+
+/* Accent text gradient */
+.text-accent-gradient {
+  background: linear-gradient(135deg, #b6ff00 0%, #5cff8a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Mobile safe area padding */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+.safe-top {
+  padding-top: max(env(safe-area-inset-top), 0.5rem);
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
