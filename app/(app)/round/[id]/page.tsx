@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { Tee } from "@/lib/supabase/database.types";
 import { Scorecard } from "./_components/scorecard";
 
 export const metadata: Metadata = { title: "Round" };
@@ -12,7 +13,7 @@ export default async function RoundPage(props: { params: Promise<{ id: string }>
 
   const { data: roundData } = await supabase
     .from("rounds")
-    .select("*, courses(id, name, par_total, slope_rating, course_rating)")
+    .select("*, courses(id, name, par_total, tees)")
     .eq("id", id)
     .single();
   if (!roundData) notFound();
@@ -20,18 +21,18 @@ export default async function RoundPage(props: { params: Promise<{ id: string }>
     id: string;
     course_id: string;
     tees_played: string | null;
+    hole_count: number;
     courses: {
       id: string;
       name: string;
       par_total: number;
-      slope_rating: number;
-      course_rating: number;
+      tees: Tee[];
     };
   };
 
-  const { data: holes } = await supabase
+  const { data: holesData } = await supabase
     .from("holes")
-    .select("hole_number, par, yardage, handicap_index")
+    .select("hole_number, par, handicap_index, yardages")
     .eq("course_id", round.course_id)
     .order("hole_number", { ascending: true });
 
@@ -41,14 +42,26 @@ export default async function RoundPage(props: { params: Promise<{ id: string }>
     .eq("round_id", id)
     .order("hole_number", { ascending: true });
 
-  const course = round.courses;
+  const teeLabel = round.tees_played ?? round.courses.tees[0]?.label ?? null;
+  const holes = (holesData ?? [])
+    .filter((h) => h.hole_number <= round.hole_count)
+    .map((h) => {
+      const yardages = (h.yardages as Record<string, number>) ?? {};
+      const y = teeLabel ? yardages[teeLabel] : undefined;
+      return {
+        hole_number: h.hole_number,
+        par: h.par,
+        handicap_index: h.handicap_index,
+        yardage: typeof y === "number" && y > 0 ? y : null,
+      };
+    });
 
   return (
     <Scorecard
       roundId={id}
-      courseName={course.name}
-      teesPlayed={round.tees_played}
-      holes={holes ?? []}
+      courseName={round.courses.name}
+      teesPlayed={teeLabel}
+      holes={holes}
       initialEntries={entries ?? []}
     />
   );

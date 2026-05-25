@@ -12,20 +12,47 @@ export type LifetimeCounts = {
   roundsPlayed: number;
 };
 
+export type BestRound = {
+  score: number;
+  over: number;
+  courseName: string | null;
+  date: string;
+  holeCount: number;
+} | null;
+
+export type BestRoundRate = {
+  pct: number;          // 0..100
+  count: number;
+  available: number;
+  courseName: string | null;
+  date: string;
+  holeCount: number;
+} | null;
+
+export type BestRoundCount = {
+  count: number;
+  courseName: string | null;
+  date: string;
+  holeCount: number;
+} | null;
+
 export type Bests = {
-  lowest18: { score: number; over: number; courseName: string | null; date: string } | null;
-  bestVsPar: { over: number; score: number; courseName: string | null; date: string } | null;
-  mostFir: { count: number; courseName: string | null; date: string } | null;
-  mostGir: { count: number; courseName: string | null; date: string } | null;
-  fewestPutts: { count: number; courseName: string | null; date: string } | null;
+  lowest18: BestRound;
+  lowest9: BestRound;
+  bestVsPar: BestRound;
+  bestFir: BestRoundRate;
+  bestGir: BestRoundRate;
+  fewestPutts: BestRoundCount;
 };
 
 type RoundWithCourse = {
   id: string;
   played_at: string;
   total_strokes: number;
+  hole_count: number;
+  status: "in_progress" | "completed" | "abandoned";
   course_id: string;
-  courses: { name: string; par_total: number } | null;
+  courses: { name: string } | null;
 };
 
 type EntryRow = {
@@ -35,12 +62,8 @@ type EntryRow = {
   putts: number;
   fairway_hit: boolean | null;
   green_in_regulation: boolean;
-};
-
-type HoleRow = {
-  course_id: string;
-  hole_number: number;
-  par: number;
+  picked_up: boolean;
+  hole_par: number | null;
 };
 
 export async function getRecords(): Promise<{
@@ -49,172 +72,148 @@ export async function getRecords(): Promise<{
 }> {
   const supabase = await createClient();
 
+  // Only count completed rounds (skip in-progress and abandoned)
   const { data: roundData } = await supabase
     .from("rounds")
-    .select("id, played_at, total_strokes, course_id, courses(name, par_total)")
+    .select("id, played_at, total_strokes, hole_count, status, course_id, courses(name)")
+    .eq("status", "completed")
     .gt("total_strokes", 0)
     .order("played_at", { ascending: false });
   const rounds = (roundData ?? []) as unknown as RoundWithCourse[];
 
-  if (rounds.length === 0) {
-    return {
-      counts: {
-        eagles: 0,
-        birdies: 0,
-        pars: 0,
-        bogeys: 0,
-        doubles: 0,
-        triplesPlus: 0,
-        holesInOne: 0,
-        holesPlayed: 0,
-        roundsPlayed: 0,
-      },
-      bests: {
-        lowest18: null,
-        bestVsPar: null,
-        mostFir: null,
-        mostGir: null,
-        fewestPutts: null,
-      },
-    };
-  }
-
-  const roundIds = rounds.map((r) => r.id);
-  const courseIds = Array.from(new Set(rounds.map((r) => r.course_id)));
-
-  const { data: entryData } = await supabase
-    .from("scorecard_entries")
-    .select("round_id, hole_number, strokes, putts, fairway_hit, green_in_regulation")
-    .in("round_id", roundIds)
-    .gt("strokes", 0);
-  const entries = (entryData ?? []) as EntryRow[];
-
-  const { data: holeData } = await supabase
-    .from("holes")
-    .select("course_id, hole_number, par")
-    .in("course_id", courseIds);
-  const holes = (holeData ?? []) as HoleRow[];
-
-  // Index holes by (course_id, hole_number) for quick lookup
-  const parIdx = new Map<string, number>();
-  for (const h of holes) parIdx.set(`${h.course_id}:${h.hole_number}`, h.par);
-
-  const roundCourseId = new Map<string, string>();
-  for (const r of rounds) roundCourseId.set(r.id, r.course_id);
-
-  const counts: LifetimeCounts = {
-    eagles: 0,
-    birdies: 0,
-    pars: 0,
-    bogeys: 0,
-    doubles: 0,
-    triplesPlus: 0,
-    holesInOne: 0,
-    holesPlayed: 0,
-    roundsPlayed: rounds.length,
+  const emptyCounts: LifetimeCounts = {
+    eagles: 0, birdies: 0, pars: 0, bogeys: 0, doubles: 0, triplesPlus: 0,
+    holesInOne: 0, holesPlayed: 0, roundsPlayed: 0,
+  };
+  const emptyBests: Bests = {
+    lowest18: null, lowest9: null, bestVsPar: null,
+    bestFir: null, bestGir: null, fewestPutts: null,
   };
 
-  // Per-round aggregates for bests
+  if (rounds.length === 0) return { counts: emptyCounts, bests: emptyBests };
+
+  const roundIds = rounds.map((r) => r.id);
+  const { data: entryData } = await supabase
+    .from("scorecard_entries")
+    .select("round_id, hole_number, strokes, putts, fairway_hit, green_in_regulation, picked_up, hole_par")
+    .in("round_id", roundIds);
+  const entries = (entryData ?? []) as EntryRow[];
+
+  const counts = { ...emptyCounts, roundsPlayed: rounds.length };
+
+  // Per-round aggregates
   type PerRound = {
     id: string;
     fir: number;
+    firAvailable: number;        // par 4/5 holes that were actually scored
     gir: number;
+    girAvailable: number;        // any hole that was actually scored
     putts: number;
+    strokes: number;             // scored holes only (excludes picked_up's par+5)
+    parThru: number;
+    holesScored: number;         // holes with strokes > 0 (excludes picked_up)
+    holesAccounted: number;      // holes with strokes > 0 OR picked_up
   };
   const perRound = new Map<string, PerRound>();
+  const getPR = (id: string): PerRound => {
+    let pr = perRound.get(id);
+    if (!pr) {
+      pr = { id, fir: 0, firAvailable: 0, gir: 0, girAvailable: 0, putts: 0,
+             strokes: 0, parThru: 0, holesScored: 0, holesAccounted: 0 };
+      perRound.set(id, pr);
+    }
+    return pr;
+  };
 
   for (const e of entries) {
+    if (e.strokes === 0 && !e.picked_up) continue; // not yet played
+
+    const pr = getPR(e.round_id);
+    pr.holesAccounted += 1;
+    if (e.picked_up) {
+      // counts as par+5 for differential but doesn't count toward birdies/pars/etc.
+      continue;
+    }
+    pr.holesScored += 1;
+    pr.strokes += e.strokes;
     counts.holesPlayed += 1;
 
-    const cid = roundCourseId.get(e.round_id);
-    if (cid) {
-      const par = parIdx.get(`${cid}:${e.hole_number}`);
-      if (par != null) {
-        const delta = e.strokes - par;
-        if (e.strokes === 1) counts.holesInOne += 1;
-        if (delta <= -2) counts.eagles += 1;
-        else if (delta === -1) counts.birdies += 1;
-        else if (delta === 0) counts.pars += 1;
-        else if (delta === 1) counts.bogeys += 1;
-        else if (delta === 2) counts.doubles += 1;
-        else if (delta >= 3) counts.triplesPlus += 1;
+    const par = e.hole_par;
+    if (par != null) {
+      pr.parThru += par;
+      const delta = e.strokes - par;
+      if (e.strokes === 1) counts.holesInOne += 1;
+      if (delta <= -2) counts.eagles += 1;
+      else if (delta === -1) counts.birdies += 1;
+      else if (delta === 0) counts.pars += 1;
+      else if (delta === 1) counts.bogeys += 1;
+      else if (delta === 2) counts.doubles += 1;
+      else if (delta >= 3) counts.triplesPlus += 1;
+
+      if (par >= 4) {
+        pr.firAvailable += 1;
+        if (e.fairway_hit === true) pr.fir += 1;
       }
     }
 
-    const pr =
-      perRound.get(e.round_id) ?? { id: e.round_id, fir: 0, gir: 0, putts: 0 };
-    if (e.fairway_hit === true) pr.fir += 1;
+    pr.girAvailable += 1;
     if (e.green_in_regulation) pr.gir += 1;
     pr.putts += e.putts;
-    perRound.set(e.round_id, pr);
   }
 
   // Bests
-  const roundMeta = new Map<string, RoundWithCourse>();
-  for (const r of rounds) roundMeta.set(r.id, r);
+  const meta = new Map<string, RoundWithCourse>();
+  for (const r of rounds) meta.set(r.id, r);
 
-  // Lowest 18 — only count rounds with all 18 holes scored
-  const holesPlayedPerRound = new Map<string, number>();
-  for (const e of entries) {
-    holesPlayedPerRound.set(
-      e.round_id,
-      (holesPlayedPerRound.get(e.round_id) ?? 0) + 1,
-    );
-  }
-  const completedRounds = rounds.filter(
-    (r) => (holesPlayedPerRound.get(r.id) ?? 0) === 18,
-  );
+  let lowest18: BestRound = null;
+  let lowest9: BestRound = null;
+  let bestVsPar: BestRound = null;
+  let bestFir: BestRoundRate = null;
+  let bestGir: BestRoundRate = null;
+  let fewestPutts: BestRoundCount = null;
 
-  let lowest18: Bests["lowest18"] = null;
-  let bestVsPar: Bests["bestVsPar"] = null;
-  for (const r of completedRounds) {
-    const par = r.courses?.par_total ?? 72;
-    const over = r.total_strokes - par;
-    if (!lowest18 || r.total_strokes < lowest18.score) {
-      lowest18 = {
-        score: r.total_strokes,
-        over,
-        courseName: r.courses?.name ?? null,
-        date: r.played_at,
-      };
-    }
-    if (!bestVsPar || over < bestVsPar.over) {
-      bestVsPar = {
-        over,
-        score: r.total_strokes,
-        courseName: r.courses?.name ?? null,
-        date: r.played_at,
-      };
-    }
-  }
-
-  let mostFir: Bests["mostFir"] = null;
-  let mostGir: Bests["mostGir"] = null;
-  let fewestPutts: Bests["fewestPutts"] = null;
   for (const pr of perRound.values()) {
-    const r = roundMeta.get(pr.id);
+    const r = meta.get(pr.id);
     if (!r) continue;
-    const holesThisRound = holesPlayedPerRound.get(pr.id) ?? 0;
-    const isComplete = holesThisRound === 18;
-    const ctx = {
-      courseName: r.courses?.name ?? null,
-      date: r.played_at,
+    const ctx = { courseName: r.courses?.name ?? null, date: r.played_at, holeCount: r.hole_count };
+
+    // Round counts as "complete" only when every scheduled hole has a score or pickup
+    if (pr.holesAccounted !== r.hole_count) continue;
+
+    const over = r.total_strokes - pr.parThru;
+    const recordedRound = {
+      score: r.total_strokes,
+      over,
+      ...ctx,
     };
-    if (isComplete) {
-      if (!mostFir || pr.fir > mostFir.count) {
-        mostFir = { count: pr.fir, ...ctx };
+
+    // Bucket: <18 holes → "lowest 9", >=18 → "lowest 18" (covers 19-hole P+W combos)
+    if (r.hole_count >= 18) {
+      if (!lowest18 || r.total_strokes < lowest18.score) lowest18 = recordedRound;
+    } else {
+      if (!lowest9 || r.total_strokes < lowest9.score) lowest9 = recordedRound;
+    }
+    if (!bestVsPar || over < bestVsPar.over) bestVsPar = recordedRound;
+
+    if (pr.firAvailable > 0) {
+      const pct = Math.round((pr.fir / pr.firAvailable) * 100);
+      if (!bestFir || pct > bestFir.pct) {
+        bestFir = { pct, count: pr.fir, available: pr.firAvailable, ...ctx };
       }
-      if (!mostGir || pr.gir > mostGir.count) {
-        mostGir = { count: pr.gir, ...ctx };
+    }
+    if (pr.girAvailable > 0) {
+      const pct = Math.round((pr.gir / pr.girAvailable) * 100);
+      if (!bestGir || pct > bestGir.pct) {
+        bestGir = { pct, count: pr.gir, available: pr.girAvailable, ...ctx };
       }
-      if (pr.putts > 0 && (!fewestPutts || pr.putts < fewestPutts.count)) {
-        fewestPutts = { count: pr.putts, ...ctx };
-      }
+    }
+    if (pr.putts > 0 && (!fewestPutts || pr.putts < fewestPutts.count)) {
+      fewestPutts = { count: pr.putts, ...ctx };
     }
   }
 
   return {
     counts,
-    bests: { lowest18, bestVsPar, mostFir, mostGir, fewestPutts },
+    bests: { lowest18, lowest9, bestVsPar, bestFir, bestGir, fewestPutts },
   };
 }

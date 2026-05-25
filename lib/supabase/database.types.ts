@@ -1,9 +1,15 @@
 /**
- * Hand-written Supabase database types matching db/schema.sql.
- * Regenerate with `supabase gen types typescript` once the project is linked.
+ * Hand-written Supabase database types matching db/schema.sql (v2 multi-tee).
  */
 
 export type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
+
+export type Tee = {
+  label: string;
+  slope: number;
+  rating: number;
+  color: string | null;
+};
 
 export type Database = {
   public: {
@@ -58,9 +64,8 @@ export type Database = {
           city: string | null;
           country: string | null;
           par_total: number;
-          tees_label: string;
-          slope_rating: number;
-          course_rating: number;
+          hole_count: number;
+          tees: Tee[];
           created_at: string;
         };
         Insert: {
@@ -70,9 +75,8 @@ export type Database = {
           city?: string | null;
           country?: string | null;
           par_total: number;
-          tees_label?: string;
-          slope_rating?: number;
-          course_rating?: number;
+          hole_count?: number;
+          tees?: Tee[];
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["courses"]["Insert"]>;
@@ -84,16 +88,16 @@ export type Database = {
           course_id: string;
           hole_number: number;
           par: number;
-          yardage: number;
-          handicap_index: number;
+          handicap_index: number | null;
+          yardages: Record<string, number>;
         };
         Insert: {
           id?: string;
           course_id: string;
           hole_number: number;
           par: number;
-          yardage: number;
-          handicap_index: number;
+          handicap_index?: number | null;
+          yardages?: Record<string, number>;
         };
         Update: Partial<Database["public"]["Tables"]["holes"]["Insert"]>;
         Relationships: [];
@@ -105,6 +109,11 @@ export type Database = {
           course_id: string;
           played_at: string;
           tees_played: string | null;
+          tees_slope: number | null;
+          tees_rating: number | null;
+          hole_count: number;
+          status: "in_progress" | "completed" | "abandoned";
+          finished_at: string | null;
           weather_summary: string | null;
           notes: string | null;
           total_strokes: number;
@@ -117,6 +126,11 @@ export type Database = {
           course_id: string;
           played_at?: string;
           tees_played?: string | null;
+          tees_slope?: number | null;
+          tees_rating?: number | null;
+          hole_count?: number;
+          status?: "in_progress" | "completed" | "abandoned";
+          finished_at?: string | null;
           weather_summary?: string | null;
           notes?: string | null;
           total_strokes?: number;
@@ -137,6 +151,8 @@ export type Database = {
           green_in_regulation: boolean;
           sand_save: boolean;
           penalties: number;
+          picked_up: boolean;
+          hole_par: number | null;
           notes: string | null;
         };
         Insert: {
@@ -149,6 +165,8 @@ export type Database = {
           green_in_regulation?: boolean;
           sand_save?: boolean;
           penalties?: number;
+          picked_up?: boolean;
+          hole_par?: number | null;
           notes?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["scorecard_entries"]["Insert"]>;

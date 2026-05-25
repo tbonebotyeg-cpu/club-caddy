@@ -16,7 +16,7 @@ export default async function NewRoundPage(props: {
   const supabase = await createClient();
   const { data: courses } = await supabase
     .from("courses")
-    .select("id, name, city, tees_label, par_total, slope_rating, course_rating")
+    .select("id, name, city, par_total, hole_count, tees")
     .order("name", { ascending: true });
 
   if (!courses || courses.length === 0) {
@@ -43,7 +43,7 @@ export default async function NewRoundPage(props: {
     <div className="py-6 md:py-10 max-w-2xl mx-auto">
       <p className="text-xs uppercase tracking-[0.2em] text-accent">Round</p>
       <h1 className="mt-2 text-3xl md:text-4xl font-semibold tracking-tight">Start a round</h1>
-      <p className="mt-2 text-muted text-sm">Pick a course and tees. You can edit later.</p>
+      <p className="mt-2 text-muted text-sm">Pick a course, tee box, and how many holes you're playing.</p>
       <div className="mt-8">
         <StartRoundForm courses={courses} preselectedCourseId={sp.course} />
       </div>

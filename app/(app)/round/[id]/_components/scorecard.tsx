@@ -11,18 +11,24 @@ import {
   Plus,
   Minus,
   Trash2,
+  HandHelping,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { scoreLabel } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { updateScorecardEntry, finishRound, deleteRound } from "../../actions";
+import {
+  updateScorecardEntry,
+  pickUpHole,
+  finishRound,
+  deleteRound,
+} from "../../actions";
 
 type Hole = {
   hole_number: number;
   par: number;
-  yardage: number;
-  handicap_index: number;
+  yardage: number | null;
+  handicap_index: number | null;
 };
 
 type Entry = {
@@ -35,6 +41,7 @@ type Entry = {
   green_in_regulation: boolean;
   sand_save: boolean;
   penalties: number;
+  picked_up: boolean;
   notes: string | null;
 };
 
@@ -52,10 +59,11 @@ export function Scorecard({
   initialEntries: Entry[];
 }) {
   const router = useRouter();
+  const holeCount = holes.length;
   const [entries, setEntries] = useState<Entry[]>(initialEntries);
   const [active, setActive] = useState<number>(() => {
-    const lastPlayed = initialEntries.findLast?.((e) => e.strokes > 0);
-    return lastPlayed ? Math.min(18, lastPlayed.hole_number + 1) : 1;
+    const lastDone = initialEntries.findLast?.((e) => e.strokes > 0 || e.picked_up);
+    return lastDone ? Math.min(holeCount, lastDone.hole_number + 1) : 1;
   });
   const [, startTransition] = useTransition();
 
@@ -72,17 +80,25 @@ export function Scorecard({
       green_in_regulation: false,
       sand_save: false,
       penalties: 0,
+      picked_up: false,
       notes: null,
     } as Entry);
 
   const totals = useMemo(() => {
-    const played = entries.filter((e) => e.strokes > 0);
-    const strokes = played.reduce((s, e) => s + e.strokes, 0);
-    const parThru = played.reduce((s, e) => {
+    // Sum entered strokes + picked-up holes count as par+5
+    const strokes = entries.reduce((s, e) => {
+      if (e.picked_up) {
+        const h = holes.find((x) => x.hole_number === e.hole_number);
+        return s + ((h?.par ?? 4) + 5);
+      }
+      return s + (e.strokes || 0);
+    }, 0);
+    const done = entries.filter((e) => e.strokes > 0 || e.picked_up);
+    const parThru = done.reduce((s, e) => {
       const h = holes.find((x) => x.hole_number === e.hole_number);
       return s + (h?.par ?? 0);
     }, 0);
-    return { strokes, holesThru: played.length, parThru };
+    return { strokes, holesThru: done.length, parThru };
   }, [entries, holes]);
 
   function patchLocal(holeNumber: number, patch: Partial<Entry>) {
@@ -102,15 +118,44 @@ export function Scorecard({
     });
   }
 
+  function setStrokes(n: number) {
+    const clamped = Math.max(0, Math.min(15, n));
+    if (clamped !== currentEntry.strokes || currentEntry.picked_up) {
+      // Setting strokes also clears picked_up (action does it server-side too)
+      patchLocal(active, { strokes: clamped, picked_up: false });
+      startTransition(async () => {
+        try {
+          await updateScorecardEntry(roundId, active, { strokes: clamped });
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Save failed");
+        }
+      });
+    }
+  }
+
   function inc(field: "strokes" | "putts" | "penalties", delta: number) {
+    if (field === "strokes") {
+      setStrokes((currentEntry.strokes ?? 0) + delta);
+      return;
+    }
     const cur = (currentEntry[field] as number) ?? 0;
-    const max = field === "strokes" ? 15 : 10;
-    const next = Math.max(0, Math.min(max, cur + delta));
+    const next = Math.max(0, Math.min(10, cur + delta));
     if (next !== cur) commit({ [field]: next });
   }
 
+  function handlePickUp() {
+    patchLocal(active, { picked_up: true, strokes: 0 });
+    startTransition(async () => {
+      try {
+        await pickUpHole(roundId, active);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Failed");
+      }
+    });
+  }
+
   function goto(n: number) {
-    setActive(Math.max(1, Math.min(18, n)));
+    setActive(Math.max(1, Math.min(holeCount, n)));
   }
 
   if (!currentHole) {
@@ -122,6 +167,11 @@ export function Scorecard({
   }
 
   const overUnder = totals.strokes - totals.parThru;
+  const displayedStrokes = currentEntry.picked_up
+    ? null
+    : currentEntry.strokes > 0
+    ? currentEntry.strokes
+    : null;
 
   return (
     <div className="py-4 md:py-8">
@@ -134,10 +184,12 @@ export function Scorecard({
         </div>
         <div className="text-right">
           <div className="num text-2xl font-semibold">
-            {totals.strokes}
-            <span className="text-muted text-sm ml-1">
-              ({overUnder > 0 ? "+" : ""}{overUnder === 0 ? "E" : overUnder})
-            </span>
+            {totals.strokes || "—"}
+            {totals.strokes > 0 && (
+              <span className="text-muted text-sm ml-1">
+                ({overUnder > 0 ? "+" : ""}{overUnder === 0 ? "E" : overUnder})
+              </span>
+            )}
           </div>
           <div className="text-[10px] uppercase tracking-wider text-muted">
             thru {totals.holesThru}
@@ -150,9 +202,9 @@ export function Scorecard({
         <div className="inline-flex gap-1.5">
           {holes.map((h) => {
             const e = entries.find((x) => x.hole_number === h.hole_number);
-            const played = (e?.strokes ?? 0) > 0;
+            const done = e && (e.strokes > 0 || e.picked_up);
             const isActive = h.hole_number === active;
-            const label = played && e ? scoreLabel(e.strokes, h.par) : null;
+            const label = e && e.strokes > 0 ? scoreLabel(e.strokes, h.par) : null;
             return (
               <button
                 key={h.hole_number}
@@ -161,13 +213,17 @@ export function Scorecard({
                   "shrink-0 flex flex-col items-center justify-center w-10 h-12 rounded-lg border text-[11px]",
                   isActive
                     ? "border-accent bg-accent/10 text-accent"
-                    : played
+                    : done
                     ? "border-border-strong bg-surface text-foreground"
                     : "border-border bg-surface text-muted",
                 )}
               >
                 <span className="num font-semibold">{h.hole_number}</span>
-                {label && <span className={cn("num text-[10px]", label.className)}>{e?.strokes}</span>}
+                {e?.picked_up ? (
+                  <span className="num text-[10px] text-warning">X</span>
+                ) : label ? (
+                  <span className={cn("num text-[10px]", label.className)}>{e?.strokes}</span>
+                ) : null}
               </button>
             );
           })}
@@ -181,7 +237,11 @@ export function Scorecard({
             <Flag className="h-5 w-5 text-accent" />
             <span className="text-lg font-semibold">Hole {currentHole.hole_number}</span>
             <span className="text-xs uppercase tracking-wider text-muted">
-              Par {currentHole.par} · {currentHole.yardage}y · HCP {currentHole.handicap_index}
+              Par {currentHole.par}
+              {currentHole.yardage ? ` · ${currentHole.yardage}y` : ""}
+              {currentHole.handicap_index != null
+                ? ` · HCP ${currentHole.handicap_index}`
+                : ""}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -195,7 +255,7 @@ export function Scorecard({
             </button>
             <button
               onClick={() => goto(active + 1)}
-              disabled={active === 18}
+              disabled={active === holeCount}
               className="rounded-full p-2 text-muted hover:text-foreground disabled:opacity-30"
               aria-label="Next hole"
             >
@@ -217,16 +277,20 @@ export function Scorecard({
             <div
               className={cn(
                 "num text-7xl font-semibold leading-none",
-                currentEntry.strokes > 0
-                  ? scoreLabel(currentEntry.strokes, currentHole.par).className
+                currentEntry.picked_up
+                  ? "text-warning"
+                  : displayedStrokes
+                  ? scoreLabel(displayedStrokes, currentHole.par).className
                   : "text-muted",
               )}
             >
-              {currentEntry.strokes || "—"}
+              {currentEntry.picked_up ? "X" : displayedStrokes ?? "—"}
             </div>
             <div className="text-[10px] uppercase tracking-wider text-muted mt-1">
-              {currentEntry.strokes > 0
-                ? scoreLabel(currentEntry.strokes, currentHole.par).label
+              {currentEntry.picked_up
+                ? "Picked up"
+                : displayedStrokes
+                ? scoreLabel(displayedStrokes, currentHole.par).label
                 : "Strokes"}
             </div>
           </div>
@@ -236,6 +300,41 @@ export function Scorecard({
             aria-label="Increment strokes"
           >
             <Plus className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Tap-to-set strokes row */}
+        <div className="mt-4 grid grid-cols-8 gap-1.5">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+            <button
+              key={n}
+              onClick={() => setStrokes(n)}
+              className={cn(
+                "num h-9 rounded-lg border text-sm font-semibold transition-colors",
+                !currentEntry.picked_up && currentEntry.strokes === n
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-border bg-background text-muted hover:text-foreground",
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+
+        {/* Pickup */}
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={handlePickUp}
+            disabled={currentEntry.picked_up}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+              currentEntry.picked_up
+                ? "bg-warning/10 text-warning cursor-default"
+                : "border border-border text-muted hover:text-warning hover:border-warning",
+            )}
+          >
+            <HandHelping className="h-3.5 w-3.5" />
+            {currentEntry.picked_up ? "Picked up" : "Pick up on this hole"}
           </button>
         </div>
 
@@ -285,24 +384,33 @@ export function Scorecard({
           />
         </div>
 
-        {/* Next / finish */}
+        {/* Next + finish — both always available so you can end early */}
         <div className="mt-6 flex gap-3">
-          {active < 18 ? (
+          {active < holeCount && (
             <Button className="flex-1" onClick={() => goto(active + 1)}>
               Next hole <ChevronRight className="h-4 w-4" />
             </Button>
-          ) : (
-            <Button
-              className="flex-1"
-              onClick={() =>
-                startTransition(async () => {
-                  await finishRound(roundId);
-                })
-              }
-            >
-              <Check className="h-4 w-4" /> Finish round
-            </Button>
           )}
+          <Button
+            variant={active < holeCount ? "outline" : "primary"}
+            className={active < holeCount ? "" : "flex-1"}
+            onClick={() => {
+              const holesDone = entries.filter((e) => e.strokes > 0 || e.picked_up).length;
+              if (holesDone < holeCount) {
+                if (
+                  !confirm(
+                    `Finish with only ${holesDone} of ${holeCount} holes complete? The remaining holes will be left unfilled.`,
+                  )
+                )
+                  return;
+              }
+              startTransition(async () => {
+                await finishRound(roundId);
+              });
+            }}
+          >
+            <Check className="h-4 w-4" /> Finish round
+          </Button>
         </div>
       </Card>
 

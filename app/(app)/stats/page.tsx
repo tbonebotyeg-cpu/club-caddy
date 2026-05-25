@@ -20,20 +20,26 @@ export default async function StatsPage() {
 
   const { data: allRounds } = await supabase
     .from("rounds")
-    .select("total_strokes, courses(par_total)")
+    .select("total_strokes, hole_count, courses(par_total)")
+    .eq("status", "completed")
     .gt("total_strokes", 0)
     .order("played_at", { ascending: false })
     .limit(50);
 
   const playedRounds = (allRounds ?? []) as unknown as Array<{
     total_strokes: number;
+    hole_count: number;
     courses: { par_total: number } | null;
   }>;
 
-  const scoringAvg =
+  // Scoring avg normalized to 18 holes (a 9-hole 40 becomes "80 equivalent")
+  const scoringAvg18 =
     playedRounds.length > 0
       ? Math.round(
-          playedRounds.reduce((s, r) => s + r.total_strokes, 0) / playedRounds.length,
+          playedRounds.reduce(
+            (s, r) => s + (r.total_strokes * (18 / Math.max(1, r.hole_count))),
+            0,
+          ) / playedRounds.length,
         )
       : null;
 
@@ -42,7 +48,9 @@ export default async function StatsPage() {
       ? Math.round(
           playedRounds.reduce((s, r) => {
             const par = r.courses?.par_total ?? 72;
-            return s + (r.total_strokes - par);
+            const equivStrokes = r.total_strokes * (18 / Math.max(1, r.hole_count));
+            const equivPar = par * (18 / Math.max(1, r.hole_count));
+            return s + (equivStrokes - equivPar);
           }, 0) / playedRounds.length,
         )
       : null;
@@ -92,15 +100,15 @@ export default async function StatsPage() {
             accent
           />
           <BigStat
-            label="Scoring avg"
-            value={scoringAvg ?? "—"}
+            label="Scoring avg (18)"
+            value={scoringAvg18 ?? "—"}
             hint={overParAvg != null ? `${overParAvg > 0 ? "+" : ""}${overParAvg} vs par` : ""}
           />
-          <BigStat label="Rounds tracked" value={counts.roundsPlayed} hint="lifetime" />
+          <BigStat label="Rounds tracked" value={counts.roundsPlayed} hint="completed" />
           <BigStat
             label="Holes played"
             value={counts.holesPlayed}
-            hint={`${counts.roundsPlayed} rounds`}
+            hint="lifetime"
           />
         </div>
       </section>
@@ -124,53 +132,65 @@ export default async function StatsPage() {
 
       {/* Personal bests */}
       <section>
-        <SectionHeader icon={Trophy} title="Personal bests" hint="Best round you've tracked" />
+        <SectionHeader icon={Trophy} title="Personal bests" hint="Across your completed rounds" />
         <div className="grid md:grid-cols-2 gap-3 mt-3">
           <BestCard
             label="Lowest 18"
             value={bests.lowest18 ? bests.lowest18.score : "—"}
             sub={
               bests.lowest18
-                ? `${bests.lowest18.over === 0 ? "E" : bests.lowest18.over > 0 ? `+${bests.lowest18.over}` : bests.lowest18.over} · ${bests.lowest18.courseName ?? "Unknown"}`
-                : "Finish all 18 to count"
+                ? `${formatOver(bests.lowest18.over)} · ${bests.lowest18.courseName ?? "Unknown"}`
+                : "Play 18 to set this"
             }
             date={bests.lowest18?.date}
           />
           <BestCard
-            label="Best vs par"
-            value={
-              bests.bestVsPar
-                ? bests.bestVsPar.over === 0
-                  ? "E"
-                  : bests.bestVsPar.over > 0
-                  ? `+${bests.bestVsPar.over}`
-                  : `${bests.bestVsPar.over}`
-                : "—"
+            label="Lowest 9"
+            value={bests.lowest9 ? bests.lowest9.score : "—"}
+            sub={
+              bests.lowest9
+                ? `${formatOver(bests.lowest9.over)} · ${bests.lowest9.courseName ?? "Unknown"}`
+                : "Play 9 to set this"
             }
+            date={bests.lowest9?.date}
+          />
+          <BestCard
+            label="Best vs par"
+            value={bests.bestVsPar ? formatOver(bests.bestVsPar.over) : "—"}
             sub={
               bests.bestVsPar
-                ? `${bests.bestVsPar.score} · ${bests.bestVsPar.courseName ?? "Unknown"}`
+                ? `${bests.bestVsPar.score} (${bests.bestVsPar.holeCount}h) · ${bests.bestVsPar.courseName ?? "Unknown"}`
                 : "—"
             }
             date={bests.bestVsPar?.date}
           />
           <BestCard
-            label="Most fairways"
-            value={bests.mostFir ? bests.mostFir.count : "—"}
-            sub={bests.mostFir ? `${bests.mostFir.courseName ?? "Unknown"}` : "—"}
-            date={bests.mostFir?.date}
+            label="Best FIR%"
+            value={bests.bestFir ? `${bests.bestFir.pct}%` : "—"}
+            sub={
+              bests.bestFir
+                ? `${bests.bestFir.count}/${bests.bestFir.available} · ${bests.bestFir.courseName ?? "Unknown"}`
+                : "Track fairways to count"
+            }
+            date={bests.bestFir?.date}
           />
           <BestCard
-            label="Most GIR"
-            value={bests.mostGir ? bests.mostGir.count : "—"}
-            sub={bests.mostGir ? `${bests.mostGir.courseName ?? "Unknown"}` : "—"}
-            date={bests.mostGir?.date}
+            label="Best GIR%"
+            value={bests.bestGir ? `${bests.bestGir.pct}%` : "—"}
+            sub={
+              bests.bestGir
+                ? `${bests.bestGir.count}/${bests.bestGir.available} · ${bests.bestGir.courseName ?? "Unknown"}`
+                : "Track GIRs to count"
+            }
+            date={bests.bestGir?.date}
           />
           <BestCard
             label="Fewest putts"
             value={bests.fewestPutts ? bests.fewestPutts.count : "—"}
             sub={
-              bests.fewestPutts ? `${bests.fewestPutts.courseName ?? "Unknown"}` : "Track putts to count"
+              bests.fewestPutts
+                ? `${bests.fewestPutts.holeCount}h · ${bests.fewestPutts.courseName ?? "Unknown"}`
+                : "Track putts to count"
             }
             date={bests.fewestPutts?.date}
           />
@@ -188,6 +208,11 @@ export default async function StatsPage() {
       )}
     </div>
   );
+}
+
+function formatOver(over: number): string {
+  if (over === 0) return "E";
+  return over > 0 ? `+${over}` : `${over}`;
 }
 
 function SectionHeader({

@@ -17,6 +17,7 @@ export async function getHandicapIndex(): Promise<{
   const { data } = await supabase
     .from("rounds")
     .select("id, played_at, score_differential, courses(name)")
+    .eq("status", "completed")
     .not("score_differential", "is", null)
     .order("played_at", { ascending: false })
     .limit(20);

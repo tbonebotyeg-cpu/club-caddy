@@ -45,26 +45,43 @@ export type ClubWithYardages = Club & {
   yardages: ClubYardage[];
 };
 
+export const TeeSchema = z.object({
+  label: z.string().min(1).max(40),
+  slope: z.number().int().min(55).max(155),
+  rating: z.number().min(50).max(85),
+  color: z.string().max(20).nullable().default(null),
+});
+export type Tee = z.infer<typeof TeeSchema>;
+
+// Default tee box presets — used when adding a course
+export const TEE_PRESETS: Array<{ label: string; color: string }> = [
+  { label: "Black", color: "#0a0a0a" },
+  { label: "Blue",  color: "#3b82f6" },
+  { label: "White", color: "#fafafa" },
+  { label: "Gold",  color: "#facc15" },
+  { label: "Red",   color: "#ef4444" },
+  { label: "Green", color: "#22c55e" },
+];
+
 export const CourseSchema = z.object({
   id: z.string().uuid().optional(),
   user_id: z.string().uuid().optional(),
   name: z.string().min(1).max(100),
   city: z.string().max(80).nullable().optional(),
   country: z.string().max(40).nullable().optional(),
-  par_total: z.number().int().min(27).max(80),
-  tees_label: z.string().max(40).default("White"),
-  slope_rating: z.number().int().min(55).max(155).default(113),
-  course_rating: z.number().min(50).max(85).default(72),
+  par_total: z.number().int().min(12).max(90),
+  hole_count: z.number().int().min(1).max(27).default(18),
+  tees: z.array(TeeSchema).min(1),
 });
 export type Course = z.infer<typeof CourseSchema>;
 
 export const HoleSchema = z.object({
   id: z.string().uuid().optional(),
   course_id: z.string().uuid(),
-  hole_number: z.number().int().min(1).max(18),
+  hole_number: z.number().int().min(1).max(27),
   par: z.number().int().min(3).max(6),
-  yardage: z.number().int().min(50).max(700),
-  handicap_index: z.number().int().min(1).max(18),
+  handicap_index: z.number().int().min(1).max(27).nullable().optional(),
+  yardages: z.record(z.string(), z.number().int().min(0).max(700)),
 });
 export type Hole = z.infer<typeof HoleSchema>;
 
@@ -74,6 +91,7 @@ export const RoundSchema = z.object({
   course_id: z.string().uuid(),
   played_at: z.string(),
   tees_played: z.string().nullable().optional(),
+  hole_count: z.number().int().min(1).max(27).default(18),
   weather_summary: z.string().nullable().optional(),
   notes: z.string().max(400).nullable().optional(),
   total_strokes: z.number().int().min(0).default(0),
@@ -84,7 +102,7 @@ export type Round = z.infer<typeof RoundSchema>;
 export const ScorecardEntrySchema = z.object({
   id: z.string().uuid().optional(),
   round_id: z.string().uuid(),
-  hole_number: z.number().int().min(1).max(18),
+  hole_number: z.number().int().min(1).max(27),
   strokes: z.number().int().min(0).max(15),
   putts: z.number().int().min(0).max(10).default(0),
   fairway_hit: z.boolean().nullable().optional(),

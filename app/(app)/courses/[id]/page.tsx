@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import type { Tee } from "@/lib/supabase/database.types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CourseEditor } from "../_components/course-editor";
@@ -29,7 +30,7 @@ export default async function CourseDetailPage(props: {
     .order("hole_number", { ascending: true });
 
   return (
-    <div className="py-6 md:py-10 max-w-3xl mx-auto">
+    <div className="py-6 md:py-10 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-accent">Course</p>
@@ -53,15 +54,14 @@ export default async function CourseDetailPage(props: {
             city: course.city,
             country: course.country,
             par_total: course.par_total,
-            tees_label: course.tees_label,
-            slope_rating: course.slope_rating,
-            course_rating: Number(course.course_rating),
+            hole_count: course.hole_count,
+            tees: (course.tees as Tee[]) ?? [],
             holes:
               holes?.map((h) => ({
                 hole_number: h.hole_number,
                 par: h.par,
-                yardage: h.yardage,
-                handicap_index: h.handicap_index,
+                handicap_index: h.handicap_index ?? null,
+                yardages: (h.yardages as Record<string, number>) ?? {},
               })) ?? [],
           }}
         />
