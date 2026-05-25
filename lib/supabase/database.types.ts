@@ -63,8 +63,16 @@ export type Database = {
           course_rating: number;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["courses"]["Row"], "id" | "created_at"> & {
+        Insert: {
           id?: string;
+          user_id: string;
+          name: string;
+          city?: string | null;
+          country?: string | null;
+          par_total: number;
+          tees_label?: string;
+          slope_rating?: number;
+          course_rating?: number;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["courses"]["Insert"]>;
@@ -79,7 +87,14 @@ export type Database = {
           yardage: number;
           handicap_index: number;
         };
-        Insert: Omit<Database["public"]["Tables"]["holes"]["Row"], "id"> & { id?: string };
+        Insert: {
+          id?: string;
+          course_id: string;
+          hole_number: number;
+          par: number;
+          yardage: number;
+          handicap_index: number;
+        };
         Update: Partial<Database["public"]["Tables"]["holes"]["Insert"]>;
         Relationships: [];
       };
@@ -96,8 +111,16 @@ export type Database = {
           score_differential: number | null;
           created_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["rounds"]["Row"], "id" | "created_at"> & {
+        Insert: {
           id?: string;
+          user_id: string;
+          course_id: string;
+          played_at?: string;
+          tees_played?: string | null;
+          weather_summary?: string | null;
+          notes?: string | null;
+          total_strokes?: number;
+          score_differential?: number | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["rounds"]["Insert"]>;
@@ -116,8 +139,17 @@ export type Database = {
           penalties: number;
           notes: string | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["scorecard_entries"]["Row"], "id"> & {
+        Insert: {
           id?: string;
+          round_id: string;
+          hole_number: number;
+          strokes?: number;
+          putts?: number;
+          fairway_hit?: boolean | null;
+          green_in_regulation?: boolean;
+          sand_save?: boolean;
+          penalties?: number;
+          notes?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["scorecard_entries"]["Insert"]>;
         Relationships: [];
