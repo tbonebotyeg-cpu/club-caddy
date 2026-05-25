@@ -118,6 +118,19 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Native <select> dropdown options — force dark background */
+select,
+option,
+optgroup {
+  background-color: var(--surface-elevated);
+  color: var(--foreground);
+}
+option:checked,
+option:hover {
+  background-color: var(--surface);
+  color: var(--accent);
+}
+
 /* Grain overlay utility */
 .grain {
   position: relative;

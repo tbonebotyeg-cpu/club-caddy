@@ -1,17 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { Mail, CheckCircle2 } from "lucide-react";
 
 const Schema = z.object({
   email: z.string().email("Use a valid email"),
+  password: z.string().min(6, "At least 6 characters"),
 });
 type FormValues = z.infer<typeof Schema>;
 
@@ -22,44 +24,64 @@ export function LoginForm({
   nextPath: string;
   initialError?: string;
 }) {
-  const [sent, setSent] = useState(false);
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    getValues,
   } = useForm<FormValues>({ resolver: zodResolver(Schema) });
 
-  if (initialError && !sent) {
-    // Show once on mount via toast
-    setTimeout(() => toast.error(initialError), 0);
-  }
+  useEffect(() => {
+    if (initialError) toast.error(initialError);
+  }, [initialError]);
 
   async function onSubmit(values: FormValues) {
     const supabase = createClient();
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-    const { error } = await supabase.auth.signInWithOtp({
+
+    // 1. Try sign in
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: values.email,
-      options: { emailRedirectTo: redirectTo },
+      password: values.password,
     });
-    if (error) {
-      toast.error(error.message);
+
+    if (!signInErr) {
+      router.push(nextPath);
+      router.refresh();
       return;
     }
-    setSent(true);
-    toast.success("Magic link sent — check your inbox");
-  }
 
-  if (sent) {
-    return (
-      <div className="rounded-[var(--radius-card)] border border-border-strong bg-surface p-6 text-center">
-        <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-accent" />
-        <p className="font-medium">Check your email</p>
-        <p className="text-sm text-muted mt-1">
-          We sent a magic link to <span className="text-foreground">{getValues("email")}</span>. Tap it on this device to sign in.
-        </p>
-      </div>
-    );
+    // 2. If invalid credentials, try sign up (creates the account on first use)
+    if (
+      signInErr.message.toLowerCase().includes("invalid login") ||
+      signInErr.message.toLowerCase().includes("invalid credentials") ||
+      signInErr.status === 400
+    ) {
+      const { error: signUpErr, data } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+      });
+
+      if (signUpErr) {
+        toast.error(signUpErr.message);
+        return;
+      }
+
+      if (data.session) {
+        toast.success("Welcome to Club Caddy");
+        router.push(nextPath);
+        router.refresh();
+        return;
+      }
+
+      // Email confirmation is on → tell user to check inbox
+      toast.message("Check your email", {
+        description:
+          "We sent a confirmation link. Or disable email confirmation in Supabase to skip.",
+      });
+      return;
+    }
+
+    toast.error(signInErr.message);
   }
 
   return (
@@ -77,11 +99,24 @@ export function LoginForm({
           <p className="text-sm text-danger">{errors.email.message}</p>
         )}
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="password">Password</Label>
+        <Input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          placeholder="At least 6 characters"
+          {...register("password")}
+        />
+        {errors.password && (
+          <p className="text-sm text-danger">{errors.password.message}</p>
+        )}
+      </div>
       <Button type="submit" size="lg" loading={isSubmitting} className="w-full">
-        <Mail className="h-4 w-4" /> Send magic link
+        <LogIn className="h-4 w-4" /> Sign in / create account
       </Button>
       <p className="text-xs text-subtle text-center">
-        No password required. We never share your email.
+        First time? An account is created with this password. Returning? Just sign in.
       </p>
     </form>
   );

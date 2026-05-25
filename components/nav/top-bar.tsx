@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./logo";
 import { cn } from "@/lib/utils";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
 const items = [
   { href: "/bag", label: "Bag" },
@@ -12,7 +12,6 @@ const items = [
   { href: "/round/new", label: "Round", match: ["/round", "/rounds"] },
   { href: "/courses", label: "Courses" },
   { href: "/stats", label: "Stats" },
-  { href: "/goals", label: "Goals" },
 ];
 
 export function TopBar({
@@ -53,20 +52,34 @@ export function TopBar({
             );
           })}
         </nav>
-        <form action="/auth/sign-out" method="post" className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {email && (
-            <span className="hidden sm:inline text-xs text-subtle truncate max-w-[180px]">
+            <span className="hidden lg:inline text-xs text-subtle truncate max-w-[180px]">
               {email}
             </span>
           )}
-          <button
-            type="submit"
-            className="rounded-full p-2 text-muted hover:text-danger transition-colors"
-            aria-label="Sign out"
+          <Link
+            href="/settings"
+            className={cn(
+              "rounded-full p-2 transition-colors",
+              pathname.startsWith("/settings")
+                ? "text-accent bg-surface-elevated"
+                : "text-muted hover:text-foreground",
+            )}
+            aria-label="Settings"
           >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </form>
+            <Settings className="h-4 w-4" />
+          </Link>
+          <form action="/auth/sign-out" method="post">
+            <button
+              type="submit"
+              className="rounded-full p-2 text-muted hover:text-danger transition-colors"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </form>
+        </div>
       </div>
     </header>
   );

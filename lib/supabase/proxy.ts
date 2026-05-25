@@ -49,8 +49,7 @@ export async function updateSession(request: NextRequest) {
     url.pathname.startsWith("/rounds") ||
     url.pathname.startsWith("/courses") ||
     url.pathname.startsWith("/stats") ||
-    url.pathname.startsWith("/goals") ||
-    url.pathname.startsWith("/practice");
+    url.pathname.startsWith("/settings");
 
   if (!user && isAppRoute) {
     const loginUrl = url.clone();

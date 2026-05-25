@@ -64,7 +64,7 @@ create table if not exists public.holes (
 create table if not exists public.rounds (
   id                  uuid primary key default gen_random_uuid(),
   user_id             uuid not null references auth.users(id) on delete cascade,
-  course_id           uuid not null references public.courses(id) on delete restrict,
+  course_id           uuid not null references public.courses(id) on delete cascade,
   played_at           timestamptz not null default now(),
   tees_played         text,
   weather_summary     text,

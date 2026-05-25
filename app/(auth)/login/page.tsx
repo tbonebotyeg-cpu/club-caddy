@@ -19,7 +19,7 @@ export default async function LoginPage(props: {
           Welcome to <span className="text-accent">Club Caddy</span>
         </h1>
         <p className="text-muted mb-8 text-sm">
-          Enter your email — we’ll send you a one-tap sign-in link.
+          Sign in or create your account.
         </p>
         <LoginForm nextPath={sp.next ?? "/bag"} initialError={sp.error} />
       </div>
